@@ -25,16 +25,9 @@ module Opal
         s(:self)
       end
 
-      def iter
-        # Need to support passing block up even if it's not referenced in this method at all
-        @iter ||= begin
-          if arglist # TODO: Better understand this elsif vs. the else code path
-            s(:js_tmp, 'null')
-          else
-            scope.uses_block!
-            s(:js_tmp, '$iter')
-          end
-        end
+      def extract_iter
+        super
+        @iter ||= s(:js_tmp, 'null')
       end
 
       def method_jsid
@@ -86,7 +79,6 @@ module Opal
         chain, cur_defn, mid = scope.get_super_chain
         trys = chain.map { |c| "#{c}.$$def" }.join(' || ')
         implicit = @implicit_args.to_s
-
         "Opal.find_iter_super_dispatcher(self, #{mid}, (#{trys} || #{cur_defn}), #{defined_check_param}, #{implicit_arguments_param})"
       end
 
@@ -133,6 +125,17 @@ module Opal
     class ZsuperNode < SuperNode
       handle :zsuper
 
+      def extract_iter
+        super
+        # preserve a block if we have one already but otherwise, assume a block is coming from higher
+        # up the chain
+        unless iter.type == :iter
+          # Need to support passing block up even if it's not referenced in this method at all
+          scope.uses_block!
+          @iter = s(:js_tmp, '$iter')
+        end
+      end
+
       def compile
         @implicit_args = true
         if containing_def_scope
@@ -146,8 +149,6 @@ module Opal
           end
 
           self.arglist = s(:arglist, *implicit_args)
-        else
-          @arguments_without_block = []
         end
         super
       end
